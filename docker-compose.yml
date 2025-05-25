@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  kvstore1:
+    build: .
+    ports:
+      - "6379:6379"
+    volumes:
+      - kvstore_data1:/app/data
+      - kvstore_logs1:/app/logs
+    environment:
+      - JAVA_OPTS=-Xms512m -Xmx512m -XX:+UseG1GC
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "6379"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  kvstore2:
+    build: .
+    ports:
+      - "6380:6379"
+    volumes:
+      - kvstore_data2:/app/data
+      - kvstore_logs2:/app/logs
+    environment:
+      - JAVA_OPTS=-Xms512m -Xmx512m -XX:+UseG1GC
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "6379"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  haproxy:
+    image: haproxy:2.7
+    ports:
+      - "6378:6378"
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    depends_on:
+      - kvstore1
+      - kvstore2
+    deploy:
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+
+volumes:
+  kvstore_data1:
+  kvstore_logs1:
+  kvstore_data2:
+  kvstore_logs2: 
