@@ -1,11 +1,14 @@
 package com.kvstore.network;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.nio.charset.StandardCharsets;
 
 public class RedisConnectionHandler extends ChannelDuplexHandler {
     private static final Logger logger = LoggerFactory.getLogger(RedisConnectionHandler.class);
@@ -13,9 +16,10 @@ public class RedisConnectionHandler extends ChannelDuplexHandler {
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
         logger.info("New connection from {}", ctx.channel().remoteAddress());
-        // Send Redis 6+ compatible greeting
-        String greeting = "-NOAUTH Authentication required.\r\n";
-        ctx.writeAndFlush(greeting).addListener(future -> {
+        // Send Redis OK response instead of requiring auth
+        String greeting = "+OK\r\n";
+        ByteBuf response = Unpooled.copiedBuffer(greeting, StandardCharsets.UTF_8);
+        ctx.writeAndFlush(response).addListener(future -> {
             if (future.isSuccess()) {
                 logger.info("Sent greeting to {}", ctx.channel().remoteAddress());
             } else {

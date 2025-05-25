@@ -8,6 +8,7 @@ services:
     volumes:
       - kvstore_data1:/app/data
       - kvstore_logs1:/app/logs
+      - ./healthcheck.sh:/app/healthcheck.sh
     environment:
       - JAVA_OPTS=-Xms512m -Xmx512m -XX:+UseG1GC
     networks:
@@ -26,7 +27,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    command: ["sh", "-c", "cp /app/healthcheck.sh /app/healthcheck.sh && chmod +x /app/healthcheck.sh && java $JAVA_OPTS -jar app.jar"]
+    command: ["sh", "-c", "chmod +x /app/healthcheck.sh && java $JAVA_OPTS -jar app.jar"]
 
   kvstore2:
     build: .
@@ -35,6 +36,7 @@ services:
     volumes:
       - kvstore_data2:/app/data
       - kvstore_logs2:/app/logs
+      - ./healthcheck.sh:/app/healthcheck.sh
     environment:
       - JAVA_OPTS=-Xms512m -Xmx512m -XX:+UseG1GC
     networks:
@@ -53,7 +55,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    command: ["sh", "-c", "cp /app/healthcheck.sh /app/healthcheck.sh && chmod +x /app/healthcheck.sh && java $JAVA_OPTS -jar app.jar"]
+    command: ["sh", "-c", "chmod +x /app/healthcheck.sh && java $JAVA_OPTS -jar app.jar"]
 
   haproxy:
     image: haproxy:2.7
@@ -61,7 +63,7 @@ services:
       - "6378:6378"
     volumes:
       - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
-      - ./healthcheck.sh:/usr/local/bin/healthcheck.sh:ro
+      - ./healthcheck.sh:/usr/local/bin/healthcheck.sh
     networks:
       - redis_net
     depends_on:
