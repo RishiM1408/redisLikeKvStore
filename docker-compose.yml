@@ -10,6 +10,8 @@ services:
       - kvstore_logs1:/app/logs
     environment:
       - JAVA_OPTS=-Xms512m -Xmx512m -XX:+UseG1GC
+    networks:
+      - redis_net
     deploy:
       resources:
         limits:
@@ -19,10 +21,11 @@ services:
         condition: on-failure
         max_attempts: 3
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "6379"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD", "echo", "PING", "|", "nc", "localhost", "6379"]
+      interval: 10s
+      timeout: 5s
       retries: 3
+      start_period: 10s
 
   kvstore2:
     build: .
@@ -33,6 +36,8 @@ services:
       - kvstore_logs2:/app/logs
     environment:
       - JAVA_OPTS=-Xms512m -Xmx512m -XX:+UseG1GC
+    networks:
+      - redis_net
     deploy:
       resources:
         limits:
@@ -42,10 +47,11 @@ services:
         condition: on-failure
         max_attempts: 3
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "6379"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD", "echo", "PING", "|", "nc", "localhost", "6379"]
+      interval: 10s
+      timeout: 5s
       retries: 3
+      start_period: 10s
 
   haproxy:
     image: haproxy:2.7
@@ -53,13 +59,23 @@ services:
       - "6378:6378"
     volumes:
       - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    networks:
+      - redis_net
     depends_on:
-      - kvstore1
-      - kvstore2
-    deploy:
-      restart_policy:
-        condition: on-failure
-        max_attempts: 3
+      kvstore1:
+        condition: service_healthy
+      kvstore2:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "echo", "PING", "|", "nc", "localhost", "6378"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  redis_net:
+    driver: bridge
 
 volumes:
   kvstore_data1:

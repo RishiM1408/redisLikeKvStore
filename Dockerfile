@@ -20,7 +20,7 @@ RUN mkdir -p /app/logs
 EXPOSE 6379
 
 # Set environment variables
-ENV JAVA_OPTS="-Xms512m -Xmx512m -XX:+UseG1GC"
+ENV J127.0.0.1AVA_OPTS="-Xms512m -Xmx512m -XX:+UseG1GC"
 
 # Run the application
-CMD ["sh", "-c", "java $JAVA_OPTS -jar app.jar"] 
+CMD ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
