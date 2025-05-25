@@ -8,9 +8,13 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.logging.LogLevel;
+import io.netty.handler.logging.LoggingHandler;
+import io.netty.handler.timeout.IdleStateHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.kvstore.core.StorageEngine;
+import java.util.concurrent.TimeUnit;
 
 public class KVStoreServer {
     private static final Logger logger = LoggerFactory.getLogger(KVStoreServer.class);
@@ -32,26 +36,50 @@ public class KVStoreServer {
             ServerBootstrap b = new ServerBootstrap();
             b.group(bossGroup, workerGroup)
                     .channel(NioServerSocketChannel.class)
+                    .handler(new LoggingHandler(LogLevel.INFO))
                     .childHandler(new ChannelInitializer<SocketChannel>() {
                         @Override
                         protected void initChannel(SocketChannel ch) {
-                            ch.pipeline().addLast(
-                                    new RedisCommandDecoder(),
-                                    new RedisCommandHandler(storageEngine));
+                            logger.info("Initializing channel for client: {}", ch.remoteAddress());
+                            ch.pipeline()
+                                    .addLast("logging", new LoggingHandler(LogLevel.DEBUG))
+                                    .addLast("idleStateHandler", new IdleStateHandler(60, 0, 0, TimeUnit.SECONDS))
+                                    .addLast("connectionHandler", new RedisConnectionHandler())
+                                    .addLast("decoder", new RedisCommandDecoder())
+                                    .addLast("handler", new RedisCommandHandler(storageEngine));
+                            logger.info("Channel pipeline configured for client: {}", ch.remoteAddress());
                         }
                     })
                     .option(ChannelOption.SO_BACKLOG, 128)
-                    .childOption(ChannelOption.SO_KEEPALIVE, true);
+                    .option(ChannelOption.SO_REUSEADDR, true)
+                    .childOption(ChannelOption.SO_KEEPALIVE, true)
+                    .childOption(ChannelOption.TCP_NODELAY, true)
+                    .childOption(ChannelOption.SO_RCVBUF, 65536)
+                    .childOption(ChannelOption.SO_SNDBUF, 65536)
+                    .childOption(ChannelOption.CONNECT_TIMEOUT_MILLIS, 30000);
 
+            logger.info("Starting Redis-like KV Store server on port {}", port);
             ChannelFuture f = b.bind(port).sync();
-            logger.info("KVStore server started on port {}", port);
+            logger.info("KVStore server started successfully on port {}", port);
+
+            // Add shutdown hook
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                logger.info("Shutting down server...");
+                shutdown();
+                logger.info("Server shutdown complete");
+            }));
+
             f.channel().closeFuture().sync();
+        } catch (Exception e) {
+            logger.error("Failed to start server: ", e);
+            throw e;
         } finally {
             shutdown();
         }
     }
 
     public void shutdown() {
+        logger.info("Shutting down KVStore server...");
         if (bossGroup != null) {
             bossGroup.shutdownGracefully();
         }

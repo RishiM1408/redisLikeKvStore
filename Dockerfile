@@ -1,4 +1,5 @@
-FROM maven:3.9-eclipse-temurin-17 AS builder
+# Stage 1: Build the application
+FROM maven:3.9-eclipse-temurin-21 AS builder
 
 WORKDIR /app
 COPY pom.xml .
@@ -7,8 +8,8 @@ COPY src ./src
 # Build the application
 RUN mvn clean package -DskipTests
 
-# Create the runtime image
-FROM eclipse-temurin:17-jre-jammy
+# Stage 2: Create the runtime image
+FROM eclipse-temurin:21-jre AS runtime
 
 WORKDIR /app
 COPY --from=builder /app/target/redis-like-kvstore-1.0-SNAPSHOT.jar ./app.jar
@@ -18,9 +19,6 @@ RUN mkdir -p /app/logs
 
 # Expose Redis default port
 EXPOSE 6379
-
-# Set environment variables
-ENV J127.0.0.1AVA_OPTS="-Xms512m -Xmx512m -XX:+UseG1GC"
 
 # Run the application
 CMD ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]

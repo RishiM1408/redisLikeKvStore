@@ -14,6 +14,9 @@ public class RedisCommandDecoder extends ByteToMessageDecoder {
     private static final char LF = '\n';
     private static final char ARRAY_PREFIX = '*';
     private static final char BULK_STRING_PREFIX = '$';
+    private static final char INTEGER_PREFIX = ':';
+    private static final char SIMPLE_STRING_PREFIX = '+';
+    private static final char ERROR_PREFIX = '-';
 
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) {
@@ -24,7 +27,8 @@ public class RedisCommandDecoder extends ByteToMessageDecoder {
             }
         } catch (Exception e) {
             logger.error("Error decoding Redis message", e);
-            ctx.close();
+            // Send error response instead of closing connection
+            ctx.writeAndFlush("-ERR Protocol error: " + e.getMessage() + "\r\n");
         }
     }
 
@@ -34,29 +38,43 @@ public class RedisCommandDecoder extends ByteToMessageDecoder {
         }
 
         char firstByte = (char) in.getByte(in.readerIndex());
-        switch (firstByte) {
-            case ARRAY_PREFIX:
-                return decodeArray(in);
-            case BULK_STRING_PREFIX:
-                return decodeBulkString(in);
-            default:
-                logger.error("Unsupported Redis message type: {}", firstByte);
-                return null;
+        try {
+            return switch (firstByte) {
+                case ARRAY_PREFIX -> decodeArray(in);
+                case BULK_STRING_PREFIX -> decodeBulkString(in);
+                case INTEGER_PREFIX -> decodeInteger(in);
+                case SIMPLE_STRING_PREFIX -> decodeSimpleString(in);
+                case ERROR_PREFIX -> decodeError(in);
+                default -> {
+                    logger.warn("Unsupported Redis message type: {}", firstByte);
+                    yield null;
+                }
+            };
+        } catch (Exception e) {
+            logger.error("Failed to decode message type {}: {}", firstByte, e.getMessage());
+            throw e;
         }
     }
 
     private List<String> decodeArray(ByteBuf in) {
         in.skipBytes(1); // Skip *
         int length = readInteger(in);
-        List<String> array = new ArrayList<>(length);
 
+        if (length == -1) {
+            return null; // Null array
+        }
+
+        if (length < 0) {
+            throw new IllegalArgumentException("Invalid array length: " + length);
+        }
+
+        List<String> array = new ArrayList<>(length);
         for (int i = 0; i < length; i++) {
             String element = decodeBulkString(in);
             if (element != null) {
                 array.add(element);
             }
         }
-
         return array;
     }
 
@@ -65,34 +83,65 @@ public class RedisCommandDecoder extends ByteToMessageDecoder {
         int length = readInteger(in);
 
         if (length == -1) {
-            return null;
+            return null; // Null string
+        }
+
+        if (length < 0) {
+            throw new IllegalArgumentException("Invalid bulk string length: " + length);
         }
 
         if (in.readableBytes() < length + 2) { // +2 for CRLF
-            return null;
+            throw new IllegalStateException("Not enough data for bulk string of length " + length);
         }
 
         byte[] bytes = new byte[length];
         in.readBytes(bytes);
-        in.skipBytes(2); // Skip CRLF
+
+        // Verify CRLF
+        if (in.readByte() != CR || in.readByte() != LF) {
+            throw new IllegalStateException("Missing CRLF terminator");
+        }
 
         return new String(bytes);
     }
 
+    private Long decodeInteger(ByteBuf in) {
+        in.skipBytes(1); // Skip :
+        String num = readLine(in);
+        return Long.parseLong(num);
+    }
+
+    private String decodeSimpleString(ByteBuf in) {
+        in.skipBytes(1); // Skip +
+        return readLine(in);
+    }
+
+    private String decodeError(ByteBuf in) {
+        in.skipBytes(1); // Skip -
+        return readLine(in);
+    }
+
     private int readInteger(ByteBuf in) {
+        return Integer.parseInt(readLine(in));
+    }
+
+    private String readLine(ByteBuf in) {
         StringBuilder sb = new StringBuilder();
         char c;
 
         while (in.isReadable()) {
             c = (char) in.readByte();
             if (c == CR) {
-                if (in.readByte() == LF) {
-                    return Integer.parseInt(sb.toString());
+                if (!in.isReadable()) {
+                    throw new IllegalStateException("Missing LF in CRLF");
                 }
+                if (in.readByte() == LF) {
+                    return sb.toString();
+                }
+                throw new IllegalStateException("Expected LF after CR");
             }
             sb.append(c);
         }
-
-        throw new IllegalStateException("Invalid integer format");
+        throw new IllegalStateException("Incomplete line");
     }
 }
