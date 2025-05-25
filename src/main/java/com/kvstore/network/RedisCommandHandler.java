@@ -33,47 +33,36 @@ public class RedisCommandHandler extends SimpleChannelInboundHandler<List<String
 
         try {
             switch (cmd) {
-                case "PING":
-                    handlePing(ctx);
-                    break;
-                case "SET":
-                    handleSet(ctx, command);
-                    break;
-                case "GET":
-                    handleGet(ctx, command);
-                    break;
-                case "DEL":
-                    handleDel(ctx, command);
-                    break;
-                case "EXISTS":
-                    handleExists(ctx, command);
-                    break;
-                case "EXPIRE":
-                    handleExpire(ctx, command);
-                    break;
-                case "INFO":
-                    handleInfo(ctx);
-                    break;
-                case "COMMAND":
-                    handleCommand(ctx);
-                    break;
-                case "CLIENT":
-                    handleClient(ctx, command);
-                    break;
-                case "CONFIG":
-                    handleConfig(ctx, command);
-                    break;
-                case "HELLO":
-                    handleHello(ctx);
-                    break;
-                default:
-                    sendError(ctx, "ERR unknown command '" + cmd + "'");
+                case "PING" -> handlePing(ctx);
+                case "SET" -> handleSet(ctx, command);
+                case "GET" -> handleGet(ctx, command);
+                case "DEL" -> handleDel(ctx, command);
+                case "EXISTS" -> handleExists(ctx, command);
+                case "EXPIRE" -> handleExpire(ctx, command);
+                case "INFO" -> handleInfo(ctx);
+                case "COMMAND" -> handleCommand(ctx);
+                case "CLIENT" -> handleClient(ctx, command);
+                case "CONFIG" -> handleConfig(ctx, command);
+                case "HELLO" -> handleHello(ctx, command);
+                case "AUTH" -> handleAuth(ctx, command);
+                case "SELECT" -> handleSelect(ctx, command);
+                default -> sendError(ctx, "ERR unknown command '" + cmd + "'");
             }
             logger.debug("Command {} processed successfully for {}", cmd, ctx.channel().remoteAddress());
         } catch (Exception e) {
             logger.error("Error processing command: {} from {}", cmd, ctx.channel().remoteAddress(), e);
             sendError(ctx, "ERR " + e.getMessage());
         }
+    }
+
+    private void handleAuth(ChannelHandlerContext ctx, List<String> command) {
+        // In development mode, accept any auth attempt
+        ctx.writeAndFlush("+OK\r\n");
+    }
+
+    private void handleSelect(ChannelHandlerContext ctx, List<String> command) {
+        // Accept any database selection in development mode
+        ctx.writeAndFlush("+OK\r\n");
     }
 
     private void handleInfo(ChannelHandlerContext ctx) {
@@ -287,7 +276,7 @@ public class RedisCommandHandler extends SimpleChannelInboundHandler<List<String
         }
     }
 
-    private void handleHello(ChannelHandlerContext ctx) {
+    private void handleHello(ChannelHandlerContext ctx, List<String> command) {
         StringBuilder response = new StringBuilder();
         response.append("*14\r\n");
         response.append("$6\r\nserver\r\n");
